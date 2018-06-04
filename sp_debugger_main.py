@@ -535,8 +535,20 @@ class UI_Debugger(mforms.Form):
                 self._appendParametersToList, args=(_list_parameters,))
         except:
             raise
-           
+
+        #
+        """#ITS WORKING WITH TIME.SLEEP!!!!!!!"""
+        #
+        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
+        time.sleep(1)        
+        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
+        time.sleep(1)        
+        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
+        time.sleep(1)        
         _list_parameters = async_result.get()
+
+        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
+
         if _list_parameters:
             # if self._append
             left = 0
@@ -724,29 +736,7 @@ class UI_Debugger(mforms.Form):
         except:
             raise
 
-    # Used only for intern queries, preventing 'Commands Out Of Sync'
-    def _watchdogConnection(self):
-        try:
-            info = grt.root.wb.rdbmsMgmt.storedConns[0]
-            self._watchdog_connection = MySQLConnection(info)
-            self._watchdog_connection.connect()
-            if self._watchdog_connection.is_connected:
-                try:
-                    scp = "SELECT CONNECTION_ID()"
-                    result = self._watchdogExecuteSingleQuery(scp)
-                    if result and result.nextRow():
-                        self._watchdog_connection_id = result.stringByName(
-                            'CONNECTION_ID()')
-                        self._debug_printToOutput(
-                            'watchdog connection started ({0})'.format(self._watchdog_connection_id))
-                except:
-                    raise
-            else:
-                mforms.Utilities.show_warning(
-                    "Connection Failed!", "Debugger session failed to connect!", "OK", "", "")
-        except:
-            raise
-
+    # Return a MySQLResult object
     def debuggerExecuteSingleQuery(self, script, printDebug=True):
         try:
             if printDebug:
@@ -773,15 +763,7 @@ class UI_Debugger(mforms.Form):
         except:
             raise
 
-    def _watchdogExecuteSingleQuery(self, script):
-        try:
-            result = self._watchdog_connection.executeQuery(script)
-            if result:
-                return result
-        except:
-            raise
-
-    # Return a list of MySQLResult object
+    # Return a LIST of MySQLResult object
     def debuggerExecuteMultiResultQuery(self, script, printDebug=True):
         try:
             if printDebug:
@@ -808,6 +790,37 @@ class UI_Debugger(mforms.Form):
         except:
             raise
 
+    # Used only for intern queries, preventing 'Commands Out Of Sync'
+    def _watchdogConnection(self):
+        try:
+            info = grt.root.wb.rdbmsMgmt.storedConns[0]
+            self._watchdog_connection = MySQLConnection(info)
+            self._watchdog_connection.connect()
+            if self._watchdog_connection.is_connected:
+                try:
+                    scp = "SELECT CONNECTION_ID()"
+                    result = self._watchdogExecuteSingleQuery(scp)
+                    if result and result.nextRow():
+                        self._watchdog_connection_id = result.stringByName(
+                            'CONNECTION_ID()')
+                        self._debug_printToOutput(
+                            'watchdog connection started ({0})'.format(self._watchdog_connection_id))
+                except:
+                    raise
+            else:
+                mforms.Utilities.show_warning(
+                    "Connection Failed!", "Debugger session failed to connect!", "OK", "", "")
+        except:
+            raise
+
+    def _watchdogExecuteSingleQuery(self, script):
+        try:
+            result = self._watchdog_connection.executeQuery(script)
+            if result:
+                return result
+        except:
+            raise
+
     def _watchdogExecuteMultiResultQuery(self, script):
         try:
             result = self._watchdog_connection.executeQueryMultiResult(script)
@@ -822,6 +835,7 @@ class UI_Debugger(mforms.Form):
         self._watchdogConnection()
         self.compileDebugOnSp(True)
         self._searchAndSetBreakpointOnGUI()
+        self.rdebug_set_verbose(True)
         self.rdebug_start(self.getWorkerConnectionID())
 
     def removeCompiledDebug(self):
@@ -924,32 +938,45 @@ class UI_Debugger(mforms.Form):
             position,
             add_bp)
         try:
-            result2 = self.debuggerExecuteSingleQuery(script_add)
+            result2 = self.debuggerExecuteSingleQuery(script_add, False)
             if result2:
-                self._debug_printToOutput("Breakpoint added")
+                log_info(" ...Breakpoint added")
 
         except:
             mforms.Utilities.show_message(
                 "Error", "Error when trying to add breakpoint!", "OK", "", "")
             raise
 
-    def rdebug_run(self, rn):  # TO DO IMPROVEMENT ON BREAKPOINTS
-        # _list_breakpoints = self._rdebugCheckBreakpoints()
-        # if not (_list_breakpoints) or not (_list_breakpoints.numRows() > 0):
-        #     self._debug_printToOutput("No pre-breakpoints found!")
-        #     self._rdebugSetLastBreakpoint()
-        # self._debuggerThread = threading.Thread(
-        #     name='debugger', target=self._inputParametersForm, args=('',))
-        # self._debuggerThread.start()
+    def rdebug_run(self, rn):
+        # Remove all breakpoints before add then
+        if self._rdebugCheckBreakpoints():
+            self._rdebugRemoveAllBreakpoints()
 
+        # Add breakpoints setted on GUI
+        for k, v in self._listPosBreakpoints.items():
+            if v != 0:
+                self._workerThread = ThreadPool(processes=1)
+                self._workerThread.apply_async(self._rdebug_set_breakpoint, args=(v, True))
+        self._debug_printToOutput(str(self._listPreBreakpoints.items()))
+
+        # If breakpoints were not marked and setted, 
+        # Call last breakpoint anyway
+        if not self._rdebugCheckBreakpoints():
+            self._rdebugSetLastBreakpoint()
+
+        self._debug_printToOutput(str(self._rdebugCheckBreakpoints()))
         self._inputParametersForm()
 
-    # Setting last breakpoint automatically when
-    # No breakpoint was found on GUI
+    #
+    # Set last breakpoint automatically
+    # Only when no breakpoint was found on GUI
+    # Prevent infinite loop on rdebug_run()
+    #
     def _rdebugSetLastBreakpoint(self):
-        script = "SELECT statement_id FROM common_schema._rdebug_routine_statements WHERE routine_schema = '{0}' AND routine_name = '{1}' ORDER BY statement_id DESC LIMIT 1;".format(
+        script = "SELECT statement_id FROM common_schema._rdebug_routine_statements WHERE routine_schema = '{0}' AND routine_name = '{1}' ORDER BY statement_id DESC LIMIT 1".format(
             self.current_sqlEditor.defaultSchema,
             self.strp_name)
+        
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result and result.nextRow():
@@ -960,21 +987,39 @@ class UI_Debugger(mforms.Form):
                 "Error", "Error calling breakpoint setter!", "OK", "", "")
             raise
 
-    # Check all breakpoints setted via GUI, return a MySQL ResultSet
+    # Check all breakpoints setted via GUI, return a MySQLResultSet object
     def _rdebugCheckBreakpoints(self):
-        script = "SELECT statement_id FROM common_schema._rdebug_breakpoint_hints WHERE worker_id = '{0}' AND routine_schema = '{1}' AND routine_name = '{2}';".format(
+        script = "SELECT exists(select statement_id FROM common_schema._rdebug_breakpoint_hints WHERE worker_id = {0} AND routine_schema = '{1}' AND routine_name = '{2}')".format(
             self.getWorkerConnectionID(),
             self.current_sqlEditor.defaultSchema,
             self.strp_name
         )
         try:
             result = self.debuggerExecuteSingleQuery(script)
-            if result:
-                return result
+            if result and result.nextRow():
+                return int(result.stringByIndex(1))
         except:
             self.printToOutput("Failed to check breakpoints!")
             raise
 
+    def _rdebugRemoveAllBreakpoints(self):
+        script = "DELETE FROM common_schema._rdebug_breakpoint_hints WHERE worker_id = {0} AND routine_schema = '{1}' AND routine_name = '{2}'".format(
+            self.getWorkerConnectionID(),
+            self.current_sqlEditor.defaultSchema,
+            self.strp_name
+        )
+
+        try:
+            result = self.debuggerExecuteSingleQuery(script)
+            if result:
+                return True
+        except:
+            mforms.Utilities.show_message(
+                "Error", "Error calling breakpoint setter!", "OK", "", "")
+            raise
+
+        return False
+        
     def _isWorkerWaiting(self):
         script = "SELECT IFNULL(MAX(command)='Sleep', true) as 'checkStatus' FROM information_schema.processlist WHERE id={0};".format(
             self.getWorkerConnectionID())
