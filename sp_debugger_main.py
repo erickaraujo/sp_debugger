@@ -57,6 +57,7 @@ def mainForm(current_query_editor, current_sql_editor):
     form = SP_Selector(current_query_editor,
                        current_sql_editor)
 
+
 class SP_Selector():
     def __init__(self,  query_editor, sql_editor):
         self.sql_editor = sql_editor
@@ -314,9 +315,9 @@ class UI_Debugger(mforms.Form):
         if result_set:
             while result_set.nextRow():
                 framework_installed = int(result_set.stringFieldValue(0))
-            log_info(" ;var framework_installed = " + str(framework_installed))
+            log_info("... var framework_installed = " + str(framework_installed))
         if framework_installed:
-            log_info(" ;framework found!")
+            log_info("... framework found!")
             return True
         else:
             mforms.Utilities.show_warning("Warning!",
@@ -380,7 +381,6 @@ class UI_Debugger(mforms.Form):
 
     def clearOutput(self, a):
         self.textbox_output.clear()
-       
 
     # Only used in development mode
     def _debug_printToOutput(self, text):
@@ -397,7 +397,7 @@ class UI_Debugger(mforms.Form):
     # Output MySQLResultSet in a 'pretty' format
     def _printFormattedText(self, list_results):  # TO DO IMPROVEMENT
         statement_number = 1
-        result_text = "Result: \n"
+        result_text = "Result {0}: \n".format(threading.current_thread().getName())
         identation = " " * 5
         linebreak = "\n"
         column_separator = " | "
@@ -456,29 +456,29 @@ class UI_Debugger(mforms.Form):
 
     # Code_editor is 0-based line index
     def addRemoveBreakpoint(self, arb):
-        old_position = self.code_editor.get_caret_pos()
         line = self.code_editor.line_from_position(
             self.code_editor.get_caret_pos())
         self._setBreakpointOnGUI(line)
 
     def _setBreakpointOnGUI(self, line):
+        # Remove markup of breakpoint in line
         if self.code_editor.has_markup(mforms.LineMarkupBreakpoint, line):
             self.code_editor.remove_markup(mforms.LineMarkupBreakpoint, line)
             self._debug_printToOutput("Removed breakpoint line " + str(line+1))
             if line in self._listPosBreakpoints:
-                del self._listPosBreakpoints[line]
-
+                self._listPosBreakpoints[line] = 0
+                
+        # Add markup of breakpoint in line
         else:
             self.code_editor.show_markup(mforms.LineMarkupBreakpoint, line)
             self._debug_printToOutput("Added breakpoint line " + str(line+1))
             if line in self._listPreBreakpoints:
-                if not line in self._listPosBreakpoints:
-                    self._listPosBreakpoints[line] = self._listPreBreakpoints[line]
+                self._listPosBreakpoints[line] = self._listPreBreakpoints[line]
 
     # Get breakpoint position on SP and mark them in GUI editor
     # Only called once
     def _searchAndSetBreakpointOnGUI(self):
-        script = "CALL common_schema.rdebug_show_routine('{0}', '{1}');".format(
+        script = "CALL common_schema.rdebug_show_routine('{0}', '{1}')".format(
             self.current_sqlEditor.defaultSchema, self.strp_name)
 
         first_position = 0
@@ -535,11 +535,8 @@ class UI_Debugger(mforms.Form):
                 self._appendParametersToList, args=(_list_parameters,))
         except:
             raise
-
+           
         _list_parameters = async_result.get()
-
-        self._debug_printToOutput('lista->' + str(_list_parameters))
-
         if _list_parameters:
             # if self._append
             left = 0
@@ -657,7 +654,7 @@ class UI_Debugger(mforms.Form):
                 script += ", " if z != len(params_out) else ''
                 z += 1
 
-        script += ');'
+        script += ')'
 
         resultsets = self.debuggerExecuteMultiResultQuery(script)
         self._printFormattedText(resultsets)
@@ -668,7 +665,7 @@ class UI_Debugger(mforms.Form):
 
     def setWorkerConnectionID(self):
         try:
-            script = "SELECT CONNECTION_ID();"
+            script = "SELECT CONNECTION_ID()"
             result = self.workerExecuteSingleQuery(script)
             if result and result.nextRow():
                 self._debug_printToOutput(
@@ -688,7 +685,7 @@ class UI_Debugger(mforms.Form):
 
     def setDebuggerConnectionID(self):
         try:
-            script = "SELECT CONNECTION_ID();"
+            script = "SELECT CONNECTION_ID()"
             result = self.debuggerExecuteSingleQuery(script)
             if result and result.nextRow():
                 self._debug_printToOutput(
@@ -844,7 +841,7 @@ class UI_Debugger(mforms.Form):
         sp_name = self.strp_name
         params = "'{0}', '{1}', {2}".format(
             sch_name, sp_name, str(booleanAction))
-        script = "CALL common_schema.rdebug_compile_routine({0});".format(
+        script = "CALL common_schema.rdebug_compile_routine({0})".format(
             params)
         try:
             result = self.debuggerExecuteSingleQuery(script)
@@ -859,7 +856,7 @@ class UI_Debugger(mforms.Form):
     """
 
     def rdebug_start(self, session_id):
-        script = "CALL common_schema.rdebug_start({0});".format(session_id)
+        script = "CALL common_schema.rdebug_start({0})".format(session_id)
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result:
@@ -871,7 +868,7 @@ class UI_Debugger(mforms.Form):
             raise
 
     def rdebug_stop(self):
-        script = "CALL common_schema.rdebug_stop();"
+        script = "CALL common_schema.rdebug_stop()"
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result:
@@ -882,7 +879,7 @@ class UI_Debugger(mforms.Form):
             raise
 
     def rdebug_set_verbose(self, boolean):
-        script = 'CALL common_schema.rdebug_set_verbose({0});'.format(
+        script = 'CALL common_schema.rdebug_set_verbose({0})'.format(
             str(boolean))
         try:
             result = self.debuggerExecuteSingleQuery(script)
@@ -890,7 +887,7 @@ class UI_Debugger(mforms.Form):
             raise
 
     def rdebug_real_run(self):
-        script = "CALL common_schema.rdebug_run();"
+        script = "CALL common_schema.rdebug_run()"
         try:
             with self._watchdogThread:
                 result = self.debuggerExecuteMultiResultQuery(script)
@@ -910,7 +907,7 @@ class UI_Debugger(mforms.Form):
         self._rdebugSetStep('over')
 
     def _rdebugSetStep(self, step):
-        script = 'CALL common_schema.rdebug_step_{0}();'.format(step)
+        script = 'CALL common_schema.rdebug_step_{0}()'.format(step)
         try:
             result = self.debuggerExecuteMultiResultQuery(script)
             if result:
@@ -921,7 +918,7 @@ class UI_Debugger(mforms.Form):
 
     # add_bp: Boolean -> Add = True | Remove = False
     def _rdebug_set_breakpoint(self, position, add_bp):
-        script_add = "call common_schema.rdebug_set_breakpoint('{0}', '{1}', {2}, null, {3});".format(
+        script_add = "call common_schema.rdebug_set_breakpoint('{0}', '{1}', {2}, null, {3})".format(
             self.current_sqlEditor.defaultSchema,
             self.strp_name,
             position,
@@ -944,6 +941,7 @@ class UI_Debugger(mforms.Form):
         # self._debuggerThread = threading.Thread(
         #     name='debugger', target=self._inputParametersForm, args=('',))
         # self._debuggerThread.start()
+
         self._inputParametersForm()
 
     # Setting last breakpoint automatically when
