@@ -43,8 +43,6 @@ ModuleInfo = DefineModule(
 #        to be shown in places like the menu, where to take input arguments from and also that
 #        it should be included in the Utilities submenu in Tools menu."""
 # """@wbexport exports the function from the module and also describes the return and argument types of the function"""
-
-
 @ModuleInfo.plugin(
     "br.ifam.tcc.SPDebugger",
     caption="Open Stored Procedure Debugger",
@@ -162,7 +160,6 @@ class SP_Selector():
             return sp_object
         else:
             return None
-
 
 class UI_Debugger(mforms.Form):
     def __init__(self, current_query_editor, current_sql_editor, stored_procedure_object):
