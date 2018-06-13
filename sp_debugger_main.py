@@ -43,6 +43,8 @@ ModuleInfo = DefineModule(
 #        to be shown in places like the menu, where to take input arguments from and also that
 #        it should be included in the Utilities submenu in Tools menu."""
 # """@wbexport exports the function from the module and also describes the return and argument types of the function"""
+
+
 @ModuleInfo.plugin(
     "br.ifam.tcc.SPDebugger",
     caption="Open Stored Procedure Debugger",
@@ -161,6 +163,7 @@ class SP_Selector():
         else:
             return None
 
+
 class UI_Debugger(mforms.Form):
     def __init__(self, current_query_editor, current_sql_editor, stored_procedure_object):
         try:
@@ -174,15 +177,14 @@ class UI_Debugger(mforms.Form):
             self.debugger_connection = None
             self._watchdog_connection = None  # Connection used only for intern queries
             self._update_timer = None
-            self._verbose_debug = False  # Allow a verbose output for debug purposes
+            self._verbose_debug = True  # Allow a verbose output for debug purposes
 
             self._workerThread = ThreadPool()
-            self._debuggerThread = threading.Thread
-            self._watchdogThread = threading.Condition
+            self._debuggerThread = ThreadPool()
+            self._watchdogThread = ThreadPool()
             self.configs = {}
             self.configs['debug_status'] = 'stop'
-            self.configs['debug_first_run'] = False
-            self.configs['has_default_breakpoint'] = False
+            self.configs['debug_first_run'] = None
 
             icon_path = os.getcwd() + "\\images\\"  # icons size 18x18
 
@@ -284,10 +286,21 @@ class UI_Debugger(mforms.Form):
             box_buttonBox.set_padding(10)
             box_buttonBox.add_end(btn_cancel, False, True)
 
+            box_statuses = mforms.newBox(True)
+            box_statuses.set_spacing(5)
+            box_statuses.set_padding(3)
+            lb_progressLabel = mforms.newLabel("Status:")
+            self._progress = mforms.newLabel('')
+
+            box_statuses.add(lb_progressLabel, False, False)
+            box_statuses.add(self._progress, False, False)
+
             box_mainContainer.add(panel_codeEditor, False, True)
             box_mainContainer.add(panel_output, True, True)
+
             box_mainFrame.add(tb_mainToolBar, True, False)
             box_mainFrame.add(box_mainContainer, True, False)
+            box_mainFrame.add(box_statuses, True, False)
             box_mainFrame.add_end(box_buttonBox, False, False)
 
             if self.checkFrameworkStatus():
@@ -298,6 +311,7 @@ class UI_Debugger(mforms.Form):
                 self.frm_mainWindow.add_closed_callback(self.frmCloseWindow)
                 self._update_timer = mforms.Utilities.add_timeout(
                     0.1, self._update_ui)
+                self.printToOutput("Welcome to SPDebugger")
 
         except:
             mforms.Utilities.show_warning(
@@ -312,7 +326,8 @@ class UI_Debugger(mforms.Form):
         if result_set:
             while result_set.nextRow():
                 framework_installed = int(result_set.stringFieldValue(0))
-            log_info("... var framework_installed = " + str(framework_installed))
+            log_info("... var framework_installed = " +
+                     str(framework_installed))
         if framework_installed:
             log_info("... framework found!")
             return True
@@ -360,7 +375,7 @@ class UI_Debugger(mforms.Form):
     def frmCloseWindow(self):
         if self._update_timer:
             mforms.Utilities.cancel_timeout(self._update_timer)
-            log_info("update_timer canceled successfully.")
+            log_info("... update_timer canceled successfully.")
         self.removeCompiledDebug()
 
     def toDoActionButton(self, s):
@@ -394,7 +409,8 @@ class UI_Debugger(mforms.Form):
     # Output MySQLResultSet in a 'pretty' format
     def _printFormattedText(self, list_results):  # TO DO IMPROVEMENT
         statement_number = 1
-        result_text = "Result {0}: \n".format(threading.current_thread().getName())
+        result_text = "Result {0}: \n".format(
+            threading.current_thread().getName())
         identation = " " * 5
         linebreak = "\n"
         column_separator = " | "
@@ -416,7 +432,7 @@ class UI_Debugger(mforms.Form):
                     if result.numRows() > 0:
                         while result.nextRow():
                             row = column_separator + row_pointer + \
-                                result.stringByIndex(c) + linebreak
+                                result.stringByName(result.fieldName(c)) + linebreak
                             result_text += row
                     else:
                         row = column_separator + row_pointer + 'No row returned' + linebreak
@@ -432,23 +448,17 @@ class UI_Debugger(mforms.Form):
             self.printToOutput(result_text)
 
     # Called by mForms GUI.
-    def _update_ui(self):  # TO DO - IMPLEMENTS?
-        # Refreshing gui.
-        if self.tmp_refresh_txtbox.get_string_value() is not None:
-            txt = self.tmp_refresh_txtbox.get_string_value()
-        else:
-            txt = '.'
+    def _update_ui(self):
+        self._watchdogThread = ThreadPool()
+        workerWorkingAsync = self._watchdogThread.apply_async(
+            self._checkWorkerWaiting)
+        isWorkerWorking = workerWorkingAsync.get()
 
-        if self.configs['debug_status'] == 'run':
-            txt = 'running'
-            if not self._isWorkerWaiting():
-                txt = 'worker being executed'
-            else:
-                txt = 'worker waiting'
+        if not isWorkerWorking:
+            self._progress.set_text('Not running...')
         else:
-            txt = 'not running'
+            self._progress.set_text('Running...')
 
-        self.tmp_refresh_txtbox.append_text_and_scroll(txt, True)
         return True
 
     # Code_editor is 0-based line index
@@ -464,7 +474,7 @@ class UI_Debugger(mforms.Form):
             self._debug_printToOutput("Removed breakpoint line " + str(line+1))
             if line in self._listPosBreakpoints:
                 self._listPosBreakpoints[line] = 0
-                
+
         # Add markup of breakpoint in line
         else:
             self.code_editor.show_markup(mforms.LineMarkupBreakpoint, line)
@@ -489,16 +499,19 @@ class UI_Debugger(mforms.Form):
         line_content = ''
 
         try:
-            result = self.workerExecuteSingleQuery(script)
+            # Using grt executeQuery to prevent MySQL Error 2014
+            result = grt.root.wb.sqlEditors[0].executeQuery(script, 0)
+            #  = self.debuggerExecuteSingleQuery(script)
             if result:
                 while result.nextRow():
-                    line_content = result.stringByIndex(1)
+                    line_content = result.stringFieldValue(0)
                     regex_result = regex_pattern.findall(line_content)
                     if regex_result:
                         self._listPreBreakpoints[line_index] = ''.join(
                             [x[1] for x in regex_result])
                         self._setBreakpointOnGUI(line_index)
                     line_index += 1
+                result = None
         except:
             raise
 
@@ -527,27 +540,15 @@ class UI_Debugger(mforms.Form):
         pattern = re.compile(regex_pattern, re.IGNORECASE)
 
         try:
-            self._workerThread = ThreadPool(processes=1)
+            self._workerThread = ThreadPool()
             async_result = self._workerThread.apply_async(
                 self._appendParametersToList, args=(_list_parameters,))
+            _list_parameters = async_result.get()
+            log_info(str(_list_parameters))
         except:
             raise
 
-        #
-        """#ITS WORKING WITH TIME.SLEEP!!!!!!!"""
-        #
-        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
-        time.sleep(1)        
-        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
-        time.sleep(1)        
-        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
-        time.sleep(1)        
-        _list_parameters = async_result.get()
-
-        self._debug_printToOutput('is ready? ' + str(async_result.ready()))
-
         if _list_parameters:
-            # if self._append
             left = 0
             top = 0
             right = 1
@@ -597,11 +598,17 @@ class UI_Debugger(mforms.Form):
             mainForm_parameters.center()
             try:
                 if mainForm_parameters.run_modal(btn_param_ok, btn_param_cancel):
+                    self.configs['debug_status'] == 'run'
                     self._execute_sp(dict_params, dict_ParamIn, dict_ParamOut)
             except:
+                self.configs['debug_status'] == 'stop'
                 raise
         else:
-            self._execute_sp(False, False, False)
+            try:
+                self._execute_sp(False, False, False)
+            except:
+                self.configs['debug_status'] == 'stop'
+                raise
 
     def _appendParametersToList(self, _list_parameters):
         params = ''
@@ -648,7 +655,7 @@ class UI_Debugger(mforms.Form):
                 script_params_out += t + " = NULL"
                 script_params_out += ';' if i == len(params_out) else ', '
                 i += 1
-            res = self.debuggerExecuteMultiResultQuery(script_params_out)
+            res = self.workerExecuteMultiResultQuery(script_params_out)
 
         if params:
             x = 1
@@ -665,8 +672,15 @@ class UI_Debugger(mforms.Form):
 
         script += ')'
 
-        resultsets = self.debuggerExecuteMultiResultQuery(script)
-        self._printFormattedText(resultsets)
+        async_result = self._rdebugSetStep('into')
+        rset = self._workerThread.apply_async(self.workerExecuteMultiResultQuery, args=(script, False))
+        try:
+            result_list_worker = async_result.get(0.3)
+            if result_list_worker:
+                self._printFormattedText(result_list_worker)
+        except:
+            raise
+            
 
     """
         Connections with MySQL Workbench API.
@@ -832,12 +846,13 @@ class UI_Debugger(mforms.Form):
         self._watchdogConnection()
         self.compileDebugOnSp(True)
         self._searchAndSetBreakpointOnGUI()
-        self.rdebug_set_verbose(True)
         self.rdebug_start(self.getWorkerConnectionID())
+        self.rdebug_set_verbose(True)
 
     def removeCompiledDebug(self):
-        self.compileDebugOnSp(False)
         self.rdebug_stop()
+        time.sleep(0.3)
+        self.compileDebugOnSp(False)
         if self.debugger_connection.is_connected:
             self.debugger_connection.disconnect()
         if self.worker_connection.is_connected:
@@ -845,7 +860,7 @@ class UI_Debugger(mforms.Form):
         if self._watchdog_connection.is_connected:
             self._watchdog_connection.disconnect()
 
-        log_info('  Called remove debug from SP')
+        log_info('... Called remove debug from SP')
 
     def compileDebugOnSp(self, booleanAction):
         sch_name = self.current_sqlEditor.defaultSchema
@@ -869,7 +884,7 @@ class UI_Debugger(mforms.Form):
     def rdebug_start(self, session_id):
         script = "CALL common_schema.rdebug_start({0})".format(session_id)
         try:
-            result = self.debuggerExecuteSingleQuery(script)
+            result = self.debuggerExecuteMultiResultQuery(script)
             if result:
                 self._debug_printToOutput(
                     "rdebug has started! in {0}".format(session_id))
@@ -897,17 +912,6 @@ class UI_Debugger(mforms.Form):
         except:
             raise
 
-    def rdebug_real_run(self):
-        script = "CALL common_schema.rdebug_run()"
-        try:
-            with self._watchdogThread:
-                result = self.debuggerExecuteMultiResultQuery(script)
-                if result:
-                    for res in result:
-                        self.printToOutput(res)
-        except:
-            raise
-
     def rdebugStepInto(self, sst):
         self._rdebugSetStep('into')
 
@@ -920,10 +924,9 @@ class UI_Debugger(mforms.Form):
     def _rdebugSetStep(self, step):
         script = 'CALL common_schema.rdebug_step_{0}()'.format(step)
         try:
-            result = self.debuggerExecuteMultiResultQuery(script)
-            if result:
-                for res in result:
-                    self.printToOutput(res)
+            res = self._debuggerThread.apply_async(self.debuggerExecuteMultiResultQuery, args=(script, False))
+            if res:
+                return res
         except:
             raise
 
@@ -937,7 +940,7 @@ class UI_Debugger(mforms.Form):
         try:
             result2 = self.debuggerExecuteSingleQuery(script_add, False)
             if result2:
-                log_info(" ...Breakpoint added")
+                log_info("... Breakpoint added")
 
         except:
             mforms.Utilities.show_message(
@@ -948,37 +951,39 @@ class UI_Debugger(mforms.Form):
         # Remove all breakpoints before add then
         if self._rdebugCheckBreakpoints():
             self._rdebugRemoveAllBreakpoints()
+            self._debug_printToOutput('first')
 
         # Add breakpoints setted on GUI
         for k, v in self._listPosBreakpoints.items():
             if v != 0:
-                self._workerThread = ThreadPool(processes=1)
-                self._workerThread.apply_async(self._rdebug_set_breakpoint, args=(v, True))
-        self._debug_printToOutput(str(self._listPreBreakpoints.items()))
+                self._debuggerThread = ThreadPool(
+                    processes=len(self._listPosBreakpoints))
+                self._debuggerThread.apply_async(
+                    self._rdebug_set_breakpoint, args=(v, True))
 
-        # If breakpoints were not marked and setted, 
+        # If breakpoints were not marked and setted,
         # Call last breakpoint anyway
+        time.sleep(0.3)
         if not self._rdebugCheckBreakpoints():
             self._rdebugSetLastBreakpoint()
+            self._debug_printToOutput('second')
 
-        self._debug_printToOutput(str(self._rdebugCheckBreakpoints()))
         self._inputParametersForm()
 
-    #
     # Set last breakpoint automatically
     # Only when no breakpoint was found on GUI
     # Prevent infinite loop on rdebug_run()
-    #
     def _rdebugSetLastBreakpoint(self):
         script = "SELECT statement_id FROM common_schema._rdebug_routine_statements WHERE routine_schema = '{0}' AND routine_name = '{1}' ORDER BY statement_id DESC LIMIT 1".format(
             self.current_sqlEditor.defaultSchema,
             self.strp_name)
-        
+
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result and result.nextRow():
                 self._rdebug_set_breakpoint(
                     result.stringByName('statement_id'), True)
+                log_info("... no breakpoints was found, set last one")
         except:
             mforms.Utilities.show_message(
                 "Error", "Error calling breakpoint setter!", "OK", "", "")
@@ -994,9 +999,10 @@ class UI_Debugger(mforms.Form):
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result and result.nextRow():
+                log_info("... checking breakpoints")
                 return int(result.stringByIndex(1))
         except:
-            self.printToOutput("Failed to check breakpoints!")
+            self._debug_printToOutput("Failed to check breakpoints!")
             raise
 
     def _rdebugRemoveAllBreakpoints(self):
@@ -1016,9 +1022,9 @@ class UI_Debugger(mforms.Form):
             raise
 
         return False
-        
-    def _isWorkerWaiting(self):
-        script = "SELECT IFNULL(MAX(command)='Sleep', true) as 'checkStatus' FROM information_schema.processlist WHERE id={0};".format(
+
+    def _checkWorkerWaiting(self):
+        script = "SELECT IFNULL(MAX(state)='user sleep', true) as 'checkStatus' FROM information_schema.processlist WHERE id={0}".format(
             self.getWorkerConnectionID())
         res = self._watchdogExecuteSingleQuery(script)
         if res and res.nextRow():
