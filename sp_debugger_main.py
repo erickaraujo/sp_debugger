@@ -254,7 +254,7 @@ class UI_Debugger(mforms.Form):
             tbi_stepInto = mforms.newToolBarItem(mforms.ActionItem)
             tbi_stepInto.set_icon(icon_path + "icons\\debug_step_into.png")
             tbi_stepInto.set_tooltip('Step into deep stack level')
-            tbi_stepInto.add_activated_callback(self.toDoActionButton)
+            tbi_stepInto.add_activated_callback(self.rdebugStepInto)
             tb_mainToolBar.add_item(tbi_stepInto)
 
             tbi_stepOut = mforms.newToolBarItem(mforms.ActionItem)
@@ -432,7 +432,8 @@ class UI_Debugger(mforms.Form):
                     if result.numRows() > 0:
                         while result.nextRow():
                             row = column_separator + row_pointer + \
-                                result.stringByName(result.fieldName(c)) + linebreak
+                                result.stringByName(
+                                    result.fieldName(c)) + linebreak
                             result_text += row
                     else:
                         row = column_separator + row_pointer + 'No row returned' + linebreak
@@ -442,9 +443,11 @@ class UI_Debugger(mforms.Form):
             except:
                 self.printToOutput("0 row(s) returned")
                 result_text = None
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
 
-        result_text += column_point + row_line + linebreak + linebreak + linebreak
-        if result_text:
+        if result_text is not None:
+            result_text += column_point + row_line + linebreak + linebreak + linebreak
             self.printToOutput(result_text)
 
     # Called by mForms GUI.
@@ -458,6 +461,9 @@ class UI_Debugger(mforms.Form):
             self._progress.set_text('Not running...')
         else:
             self._progress.set_text('Running...')
+            if self.configs['debug_status'] == 'stop':
+                result = self.worker_async_result.get()
+                self._printFormattedText(result)
 
         return True
 
@@ -598,16 +604,20 @@ class UI_Debugger(mforms.Form):
             mainForm_parameters.center()
             try:
                 if mainForm_parameters.run_modal(btn_param_ok, btn_param_cancel):
-                    self.configs['debug_status'] == 'run'
+                    self.configs['debug_status'] = 'run'
                     self._execute_sp(dict_params, dict_ParamIn, dict_ParamOut)
             except:
-                self.configs['debug_status'] == 'stop'
+                self.configs['debug_status'] = 'stop'
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
                 raise
         else:
             try:
                 self._execute_sp(False, False, False)
             except:
-                self.configs['debug_status'] == 'stop'
+                self.configs['debug_status'] = 'stop'
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
                 raise
 
     def _appendParametersToList(self, _list_parameters):
@@ -631,6 +641,8 @@ class UI_Debugger(mforms.Form):
                         ";;", result_parameters.stringByName('data_type')])
                     _list_parameters.append(params)
         except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
             raise
 
         if not _list_parameters or b_any("in;;" in st for st in _list_parameters):
@@ -673,14 +685,20 @@ class UI_Debugger(mforms.Form):
         script += ')'
 
         async_result = self._rdebugSetStep('into')
-        rset = self._workerThread.apply_async(self.workerExecuteMultiResultQuery, args=(script, False))
+        self.worker_async_result = self._workerThread.apply_async(
+            self.workerExecuteMultiResultQuery, args=(script, False))
         try:
-            result_list_worker = async_result.get(0.3)
-            if result_list_worker:
-                self._printFormattedText(result_list_worker)
+            if not params:
+                result_list_debugger = async_result.get()
+            else:
+                result_list_debugger = async_result.get(0.3)
+
+            if result_list_debugger:
+                self._printFormattedText(result_list_debugger)
         except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
             raise
-            
 
     """
         Connections with MySQL Workbench API.
@@ -913,21 +931,51 @@ class UI_Debugger(mforms.Form):
             raise
 
     def rdebugStepInto(self, sst):
-        self._rdebugSetStep('into')
+        if self.configs['debug_status'] == 'run':
+            async_result = self._rdebugSetStep('into')
+            try:
+                result_list_debugger = async_result.get(0.3)
+                if result_list_debugger:
+                    self._printFormattedText(result_list_debugger)
+            except:
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
+                raise
 
     def rdebugStepOut(self, sst):
-        self._rdebugSetStep('out')
+        if self.configs['debug_status'] == 'run':
+            async_result = self._rdebugSetStep('out')
+            try:
+                result_list_debugger = async_result.get(0.3)
+                if result_list_debugger:
+                    self._printFormattedText(result_list_debugger)
+            except:
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
+                raise
 
     def rdebugStepOver(self, sst):
-        self._rdebugSetStep('over')
+        if self.configs['debug_status'] == 'run':
+            async_result = self._rdebugSetStep('over')
+            try:
+                result_list_debugger = async_result.get(0.3)
+                if result_list_debugger:
+                    self._printFormattedText(result_list_debugger)
+            except:
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
+                raise
 
     def _rdebugSetStep(self, step):
         script = 'CALL common_schema.rdebug_step_{0}()'.format(step)
         try:
-            res = self._debuggerThread.apply_async(self.debuggerExecuteMultiResultQuery, args=(script, False))
+            res = self._debuggerThread.apply_async(
+                self.debuggerExecuteMultiResultQuery, args=(script, False))
             if res:
                 return res
         except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
             raise
 
     # add_bp: Boolean -> Add = True | Remove = False
