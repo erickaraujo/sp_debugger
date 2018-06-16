@@ -455,22 +455,20 @@ class UI_Debugger(mforms.Form):
 
     def _printFormattedText_resultSteps(self, resultsets, resultCaller=''):
         identation = " " * 5
-        result_text = ""
-        output = ["Executing '"+resultCaller+"':"]
-        result_text += ''.join(output)
+        result_text = "Executing '"+resultCaller+"':\n"
+        output = []
         try:
             for result in resultsets:
-
+                output = []
                 line = []
                 column_lengths = []
                 ncolumns = result.numFields()
-                for column_index in range(1, ncolumns):
+
+                #setting ncolumns + 1 because of range() behaviour
+                for column_index in range(1, ncolumns+1):
                     column_name = result.fieldName(column_index)
                     line.append(column_name + identation)
                     column_lengths.append(len(column_name) + len(identation))
-
-                log_info("... " + str(column_lengths))
-                log_info("... " + str(ncolumns))
 
                 separator = []
                 for c in column_lengths:
@@ -491,7 +489,7 @@ class UI_Debugger(mforms.Form):
                 rows = []
                 while ok:
                     line = []
-                    for i in range(1, ncolumns):
+                    for i in range(1, ncolumns+1):
                         value = result.stringByIndex(i)
                         if value is None:
                             value = "NULL"
@@ -512,7 +510,11 @@ class UI_Debugger(mforms.Form):
                 result_text += "+ "+separator+" +\n"
                 result_text += "%i rows\n\n" % (result.numRows() + 1)
 
-            self.printToOutput(result_text)
+            if len(output) > 0:
+                self.printToOutput(result_text)
+            else:    
+                self.printToOutput("No rows returned")
+            
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -531,8 +533,8 @@ class UI_Debugger(mforms.Form):
 
             # if debug stop for some reason, return the sp ResultSet if any
             if self.configs['debug_status'] == 'stop':
-                result = self.worker_async_result.get()
-                self._printFormattedText(result)
+                result = self.worker_async_result.get(0.2)
+                self._printFormattedText_resultSteps(result)
                 # Reset counter to execute_sp again
                 self.configs['debug_first_run'] = True
 
