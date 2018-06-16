@@ -177,14 +177,14 @@ class UI_Debugger(mforms.Form):
             self.debugger_connection = None
             self._watchdog_connection = None  # Connection used only for intern queries
             self._update_timer = None
-            self._verbose_debug = True  # Allow a verbose output for debug purposes
+            self._verbose_debug = False  # Allow a verbose output for debug purposes
 
             self._workerThread = ThreadPool()
             self._debuggerThread = ThreadPool()
             self._watchdogThread = ThreadPool()
             self.configs = {}
             self.configs['debug_status'] = 'stop'
-            self.configs['debug_first_run'] = None
+            self.configs['debug_first_run'] = True
 
             icon_path = os.getcwd() + "\\images\\"  # icons size 18x18
 
@@ -407,19 +407,22 @@ class UI_Debugger(mforms.Form):
                                )
 
     # Output MySQLResultSet in a 'pretty' format
-    def _printFormattedText(self, list_results):  # TO DO IMPROVEMENT
+    def _printFormattedText(self, list_results, resultCaller=''):  # FIXME - Improvements
         statement_number = 1
         result_text = "Result {0}: \n".format(
-            threading.current_thread().getName())
+            resultCaller.capitalize())
         identation = " " * 5
         linebreak = "\n"
         column_separator = " | "
         column_point = "+ "
         row_pointer = "> "
+        row_line = "-"*(len(identation)*3)
+
+        no_rows_returned = column_separator + row_pointer + \
+            'No row returned' + identation + linebreak
 
         for result in list_results:
             try:
-                row_line = "-"*(len(identation)*3)
                 result_text += column_point + row_line + linebreak
                 result_text += column_separator + \
                     str(statement_number) + ". Statement " + linebreak
@@ -436,19 +439,83 @@ class UI_Debugger(mforms.Form):
                                     result.fieldName(c)) + linebreak
                             result_text += row
                     else:
-                        row = column_separator + row_pointer + 'No row returned' + linebreak
+                        row = no_rows_returned
                         result_text += row
 
                 statement_number += 1
             except:
-                self.printToOutput("0 row(s) returned")
+                self.printToOutput(no_rows_returned)
                 result_text = None
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
 
         if result_text is not None:
-            result_text += column_point + row_line + linebreak + linebreak + linebreak
+            result_text += column_point + row_line + linebreak + linebreak
             self.printToOutput(result_text)
+
+    def _printFormattedText_resultSteps(self, resultsets, resultCaller=''):
+        identation = " " * 5
+        result_text = ""
+        output = ["Executing '"+resultCaller+"':"]
+        result_text += ''.join(output)
+        try:
+            for result in resultsets:
+
+                line = []
+                column_lengths = []
+                ncolumns = result.numFields()
+                for column_index in range(1, ncolumns):
+                    column_name = result.fieldName(column_index)
+                    line.append(column_name + identation)
+                    column_lengths.append(len(column_name) + len(identation))
+
+                log_info("... " + str(column_lengths))
+                log_info("... " + str(ncolumns))
+
+                separator = []
+                for c in column_lengths:
+                    separator.append("-"*c)
+                separator = " + ".join(separator)
+                output.append("+ "+separator+" +")
+
+                line = " | ".join(line)
+                output.append("| "+line+" |")
+
+                output.append("+ "+separator+" +\n")
+
+                ok = result.firstRow()
+                if ok:
+                    result_text += '\n'.join(output)
+
+                last_flush = 0
+                rows = []
+                while ok:
+                    line = []
+                    for i in range(1, ncolumns):
+                        value = result.stringByIndex(i)
+                        if value is None:
+                            value = "NULL"
+                        line.append(value.ljust(column_lengths[i-1]))
+                    line = " | ".join(line)
+                    rows.append("| "+line+" |")
+
+                    # flush text every 1/2s
+                    if time.time() - last_flush >= 0.5:
+                        last_flush = time.time()
+                        result_text += "\n".join(rows)+"\n"
+                        rows = []
+                    ok = result.nextRow()
+
+                if rows:
+                    result_text += "\n".join(rows)+"\n"
+
+                result_text += "+ "+separator+" +\n"
+                result_text += "%i rows\n\n" % (result.numRows() + 1)
+
+            self.printToOutput(result_text)
+        except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
 
     # Called by mForms GUI.
     def _update_ui(self):
@@ -461,9 +528,13 @@ class UI_Debugger(mforms.Form):
             self._progress.set_text('Not running...')
         else:
             self._progress.set_text('Running...')
+
+            # if debug stop for some reason, return the sp ResultSet if any
             if self.configs['debug_status'] == 'stop':
                 result = self.worker_async_result.get()
                 self._printFormattedText(result)
+                # Reset counter to execute_sp again
+                self.configs['debug_first_run'] = True
 
         return True
 
@@ -494,12 +565,9 @@ class UI_Debugger(mforms.Form):
         script = "CALL common_schema.rdebug_show_routine('{0}', '{1}')".format(
             self.current_sqlEditor.defaultSchema, self.strp_name)
 
-        first_position = 0
-        actual_position = 0
         text_pattern = r'(\[:(\d+)\])'
         regex_pattern = re.compile(text_pattern, re.IGNORECASE)
 
-        list_with_id = OrderedDict()
         # Temp variables to sync line and breakpoint IDs
         line_index = 0
         line_content = ''
@@ -542,7 +610,7 @@ class UI_Debugger(mforms.Form):
         dict_ParamOut = OrderedDict()
         dict_ParamIn = OrderedDict()
 
-        regex_pattern = '(\w+);;(\w+);;(\w+)'
+        regex_pattern = r'(\w+);;(\w+);;(\w+)'
         pattern = re.compile(regex_pattern, re.IGNORECASE)
 
         try:
@@ -550,14 +618,11 @@ class UI_Debugger(mforms.Form):
             async_result = self._workerThread.apply_async(
                 self._appendParametersToList, args=(_list_parameters,))
             _list_parameters = async_result.get()
-            log_info(str(_list_parameters))
         except:
             raise
 
         if _list_parameters:
-            left = 0
             top = 0
-            right = 1
             bottom = 1
             table_parameters.set_row_count(len(_list_parameters))
             for param in _list_parameters:
@@ -650,9 +715,8 @@ class UI_Debugger(mforms.Form):
         else:
             return _list_parameters
 
-    # FIX -TO DO- WHEN CALLED TO EXECUTE A STEP
-    # SET A STEP INTO WHEN NO BREAKPOINT IS FOUND
-    # AND THEN EXITS DEBUG
+    # Only called to start debug process for first time
+    # After run once, has to be ignored
     def _execute_sp(self, params, params_in, params_out):
         script = "call {0}.{1}(".format(
             self.current_sqlEditor.defaultSchema, self.strp_name)
@@ -667,7 +731,7 @@ class UI_Debugger(mforms.Form):
                 script_params_out += t + " = NULL"
                 script_params_out += ';' if i == len(params_out) else ', '
                 i += 1
-            res = self.workerExecuteMultiResultQuery(script_params_out)
+            res = self.workerExecuteSingleQuery(script_params_out)
 
         if params:
             x = 1
@@ -691,10 +755,12 @@ class UI_Debugger(mforms.Form):
             if not params:
                 result_list_debugger = async_result.get()
             else:
-                result_list_debugger = async_result.get(0.3)
+                time.sleep(0.3)
+                result_list_debugger = async_result.get()
 
             if result_list_debugger:
-                self._printFormattedText(result_list_debugger)
+                self._printFormattedText_resultSteps(
+                    result_list_debugger, "debugger")
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -922,11 +988,14 @@ class UI_Debugger(mforms.Form):
                 "Error!", "rdebug failed to stop", "", "CANCEL", "")
             raise
 
+    # Implicity call 'watch_variables',
+    # 'show_current_statement' and 'stack_state' after each step
     def rdebug_set_verbose(self, boolean):
         script = 'CALL common_schema.rdebug_set_verbose({0})'.format(
             str(boolean))
         try:
             result = self.debuggerExecuteSingleQuery(script)
+            result = None
         except:
             raise
 
@@ -936,7 +1005,8 @@ class UI_Debugger(mforms.Form):
             try:
                 result_list_debugger = async_result.get(0.3)
                 if result_list_debugger:
-                    self._printFormattedText(result_list_debugger)
+                    self._printFormattedText_resultSteps(
+                        result_list_debugger, "debugger")
             except:
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -971,6 +1041,30 @@ class UI_Debugger(mforms.Form):
         try:
             res = self._debuggerThread.apply_async(
                 self.debuggerExecuteMultiResultQuery, args=(script, False))
+            if res:
+                return res
+        except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
+            raise
+
+    # Return a ResultSet with debugging variables and values
+    def _rdebug_watch_variables(self):
+        script = "CALL common_schema.rdebug_watch_variables()"
+        try:
+            res = self.debuggerExecuteSingleQuery(script, False)
+            if res:
+                return res
+        except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
+            raise
+
+    # Return current statement debugged
+    def _rdebug_show_current_statement(self):
+        script = "CALL common_schema.rdebug_show_statement()"
+        try:
+            res = self.debuggerExecuteSingleQuery(script, False)
             if res:
                 return res
         except:
