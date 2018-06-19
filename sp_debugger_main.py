@@ -406,53 +406,7 @@ class UI_Debugger(mforms.Form):
                                )
 
     # Output MySQLResultSet in a 'pretty' format
-    def _printFormattedText(self, list_results, resultCaller=''):  # FIXME - Improvements
-        statement_number = 1
-        result_text = "Result {0}: \n".format(
-            resultCaller.capitalize())
-        identation = " " * 5
-        linebreak = "\n"
-        column_separator = " | "
-        column_point = "+ "
-        row_pointer = "> "
-        row_line = "-"*(len(identation)*3)
-
-        no_rows_returned = column_separator + row_pointer + \
-            'No row returned' + identation + linebreak
-
-        for result in list_results:
-            try:
-                result_text += column_point + row_line + linebreak
-                result_text += column_separator + \
-                    str(statement_number) + ". Statement " + linebreak
-                for c in range(result.numFields()):
-                    c += 1  # Column index
-                    column_name = " Column: " + result.fieldName(c)
-                    result_text += column_point + row_line + linebreak
-                    result_text += column_separator + column_name + linebreak
-                    result_text += column_point + row_line + linebreak
-                    if result.numRows() > 0:
-                        while result.nextRow():
-                            row = column_separator + row_pointer + \
-                                result.stringByName(
-                                    result.fieldName(c)) + linebreak
-                            result_text += row
-                    else:
-                        row = no_rows_returned
-                        result_text += row
-
-                statement_number += 1
-            except:
-                self.printToOutput(no_rows_returned)
-                result_text = None
-                mforms.Utilities.show_warning(
-                    "Error!", str(traceback.format_exc()), "OK", "", "")
-
-        if result_text is not None:
-            result_text += column_point + row_line + linebreak + linebreak
-            self.printToOutput(result_text)
-
-    def _printFormattedText_resultSteps(self, resultsets, resultCaller='', debugger = False):
+    def _printFormattedText(self, resultsets, resultCaller='', debugger=False):
         identation = " " * 5
         result_text = "Executing '"+resultCaller+"':\n"
         output = []
@@ -460,7 +414,9 @@ class UI_Debugger(mforms.Form):
         try:
             if debugger and len(resultsets) > 1:
                 resultsets = [resultsets[1]]
+                debugger = False
 
+            if not debugger:
                 for result in resultsets:
                     output = []
                     line = []
@@ -468,12 +424,13 @@ class UI_Debugger(mforms.Form):
                     if result.numFields() >= 1:
                         ncolumns = result.numFields()
 
-                        #setting ncolumns + 1 because of range() behaviour
-                        #fieldName() index start at 1 ...
+                        # setting ncolumns + 1 because of range() behaviour
+                        # fieldName() index start at 1 ...
                         for column_index in range(1, ncolumns+1):
                             column_name = result.fieldName(column_index)
                             line.append(column_name + identation)
-                            column_lengths.append(len(column_name) + len(identation))
+                            column_lengths.append(
+                                len(column_name) + len(identation))
 
                         separator = []
                         for c in column_lengths:
@@ -485,7 +442,6 @@ class UI_Debugger(mforms.Form):
                         output.append("| "+line+" |")
 
                         output.append("+ "+separator+" +\n")
-
 
                         ok = result.firstRow()
                         # if ok:
@@ -499,7 +455,7 @@ class UI_Debugger(mforms.Form):
                                 value = result.stringByIndex(i)
                                 if value is None:
                                     value = "NULL"
-                                #column_lenghts to i-1: python lists index start with 0
+                                # column_lenghts to i-1: python lists index start with 0
                                 line.append(value.ljust(column_lengths[i-1]))
                             line = " | ".join(line)
                             rows.append("| "+line+" |")
@@ -519,18 +475,18 @@ class UI_Debugger(mforms.Form):
 
             if len(output) > 0:
                 self.printToOutput(result_text)
-            else:    
+            else:
                 if debugger == True:
-                    self.printToOutput(result_text + "\n" + identation + "No rows returned")
-                
+                    self.printToOutput(result_text + "\n" +
+                                       identation + "No rows returned.\n\n")
+
                 result = self.worker_async_result.get(0.2)
                 self._printFormattedText(result, "worker")
-            
-                
+
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
-            
+
     # Called by mForms GUI.
     def _update_ui(self):
         self._watchdogThread = ThreadPool()
@@ -769,7 +725,7 @@ class UI_Debugger(mforms.Form):
                 result_list_debugger = async_result.get()
 
             if result_list_debugger:
-                self._printFormattedText_resultSteps(
+                self._printFormattedText(
                     result_list_debugger, "debugger", True)
 
         except:
@@ -1017,7 +973,7 @@ class UI_Debugger(mforms.Form):
                 time.sleep(0.3)
                 result_list_debugger = async_result.get()
                 if result_list_debugger:
-                    self._printFormattedText_resultSteps(
+                    self._printFormattedText(
                         result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
@@ -1031,7 +987,7 @@ class UI_Debugger(mforms.Form):
                 time.sleep(0.3)
                 result_list_debugger = async_result.get()
                 if result_list_debugger:
-                    self._printFormattedText_resultSteps(
+                    self._printFormattedText(
                         result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
@@ -1045,7 +1001,7 @@ class UI_Debugger(mforms.Form):
                 time.sleep(0.3)
                 result_list_debugger = async_result.get()
                 if result_list_debugger:
-                    self._printFormattedText_resultSteps(
+                    self._printFormattedText(
                         result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
