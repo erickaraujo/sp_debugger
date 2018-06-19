@@ -221,7 +221,7 @@ class UI_Debugger(mforms.Form):
             box_output.set_padding(1)
             self.textbox_output = mforms.newTextBox(mforms.BothScrollBars)
             self.textbox_output.set_read_only(True)
-            self.textbox_output.set_padding(4)
+            self.textbox_output.set_monospaced(False)
             box_output.add(self.textbox_output, True, True)
             panel_output.add(box_output)
 
@@ -236,11 +236,10 @@ class UI_Debugger(mforms.Form):
             tbi_stopDebug = mforms.newToolBarItem(mforms.ActionItem)
             tbi_stopDebug.set_icon(icon_path + "icons\\debug_stop.png")
             tbi_stopDebug.set_tooltip('Stop debug')
-            tbi_stopDebug.add_activated_callback(self.clearOutput)
+            tbi_stopDebug.add_activated_callback(self.rdebug_stop)
             tb_mainToolBar.add_item(tbi_stopDebug)
 
-            tb_mainToolBar.add_item(
-                mforms.newToolBarItem(mforms.SeparatorItem))
+            tb_mainToolBar.add_separator_item('Separator')
 
             tbi_breakpoint = mforms.newToolBarItem(mforms.ActionItem)
             tbi_breakpoint.set_icon(
@@ -268,14 +267,20 @@ class UI_Debugger(mforms.Form):
             tbi_stepOver.add_activated_callback(self.rdebugStepOver)
             tb_mainToolBar.add_item(tbi_stepOver)
 
-            tb_mainToolBar.add_item(
-                mforms.newToolBarItem(mforms.SeparatorItem))
+            tb_mainToolBar.add_separator_item('Separator')
 
             tbi_watchVariable = mforms.newToolBarItem(mforms.ActionItem)
             tbi_watchVariable.set_icon(icon_path + "ui\\edit.png")
-            tbi_watchVariable.set_tooltip('Set a variable to watch')
+            tbi_watchVariable.set_tooltip(
+                'Set a variable to watch/change value')
             tbi_watchVariable.add_activated_callback(self.toDoActionButton)
             tb_mainToolBar.add_item(tbi_watchVariable)
+
+            tbi_clearOutput = mforms.newToolBarItem(mforms.ActionItem)
+            tbi_clearOutput.set_icon(icon_path + "icons\\wb_rubber.png")
+            tbi_clearOutput.set_tooltip('Clear output log')
+            tbi_clearOutput.add_activated_callback(self.clearOutput)
+            tb_mainToolBar.add_item(tbi_clearOutput)
 
             btn_cancel = mforms.newButton()
             btn_cancel.set_text('Close Debugger')
@@ -392,6 +397,7 @@ class UI_Debugger(mforms.Form):
 
     def clearOutput(self, a):
         self.textbox_output.clear()
+        self.printToOutput("Welcome to SPDebugger")
 
     # Only used in development mode
     def _debug_printToOutput(self, text):
@@ -941,18 +947,19 @@ class UI_Debugger(mforms.Form):
                     "rdebug has started! in {0}".format(session_id))
         except:
             mforms.Utilities.show_warning(
-                "Error!", "rdebug failed to start at {0} connection id!".format(session_id), "", "CANCEL", "")
+                "Error!", "rdebug failed to start at connection id {0} !".format(session_id), "", "CANCEL", "")
             raise
 
-    def rdebug_stop(self):
+    def rdebug_stop(self, sst=''):
         script = "CALL common_schema.rdebug_stop()"
         try:
             result = self.debuggerExecuteSingleQuery(script)
             if result:
                 self._debug_printToOutput("rdebug has stopped!")
+                self.printToOutput("Debug has been canceled. Status changed.")
         except:
             mforms.Utilities.show_warning(
-                "Error!", "rdebug failed to stop", "", "CANCEL", "")
+                "Error!", "Debug has failed to stop", "", "CANCEL", "")
             raise
 
     # Implicity call 'watch_variables',
@@ -979,6 +986,10 @@ class UI_Debugger(mforms.Form):
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
                 raise
+        else:
+            mforms.Utilities.show_message(
+                "Debug not running!", "You need to start debugging session before select a step", "OK", "", "")
+            log_info("... Debug not running yet, clicked in step into")
 
     def rdebugStepOut(self, sst):
         if self.configs['debug_status'] == 'run':
@@ -993,6 +1004,10 @@ class UI_Debugger(mforms.Form):
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
                 raise
+        else:
+            mforms.Utilities.show_message(
+                "Debug not running!", "You need to start debugging session before select a step", "OK", "", "")
+            log_info("... Debug not running yet, clicked in step out")
 
     def rdebugStepOver(self, sst):
         if self.configs['debug_status'] == 'run':
@@ -1007,6 +1022,10 @@ class UI_Debugger(mforms.Form):
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
                 raise
+        else:
+            mforms.Utilities.show_message(
+                "Debug not running!", "You need to start debugging session before select a step", "OK", "", "")
+            log_info("... Debug not running yet, clicked in step over")
 
     def _rdebugSetStep(self, step):
         script = 'CALL common_schema.rdebug_step_{0}()'.format(step)
@@ -1062,6 +1081,10 @@ class UI_Debugger(mforms.Form):
             raise
 
     def rdebug_run(self, rn):
+        # 'Start' rdebug again if 'Stop' button has clicked
+        # No implications if 'rdebug_start' is called twice
+        self.rdebug_start(self.getWorkerConnectionID())
+
         # Remove all breakpoints before add then
         if self._rdebugCheckBreakpoints():
             self._rdebugRemoveAllBreakpoints()
