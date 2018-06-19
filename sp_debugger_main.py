@@ -184,7 +184,6 @@ class UI_Debugger(mforms.Form):
             self._watchdogThread = ThreadPool()
             self.configs = {}
             self.configs['debug_status'] = 'stop'
-            self.configs['debug_first_run'] = True
 
             icon_path = os.getcwd() + "\\images\\"  # icons size 18x18
 
@@ -206,7 +205,7 @@ class UI_Debugger(mforms.Form):
 
             self.code_editor = mforms.newCodeEditor()
             self.code_editor.set_language(mforms.LanguageMySQL)
-            self.code_editor.set_size(500, 550)
+            self.code_editor.set_size(480, 550)
             self.code_editor.set_text(self.strp_body)
             self.code_editor.set_read_only(True)
             box_codeEditor.add(self.code_editor, True, True)
@@ -218,11 +217,11 @@ class UI_Debugger(mforms.Form):
             panel_output = mforms.newPanel(mforms.TitledBoxPanel)
             panel_output.set_title('Output')
             box_output = mforms.newBox(True)
-            box_output.set_size(470, 550)
+            box_output.set_size(515, 550)
             box_output.set_padding(1)
             self.textbox_output = mforms.newTextBox(mforms.BothScrollBars)
             self.textbox_output.set_read_only(True)
-            self.textbox_output.set_padding(2)
+            self.textbox_output.set_padding(4)
             box_output.add(self.textbox_output, True, True)
             panel_output.add(box_output)
 
@@ -260,13 +259,13 @@ class UI_Debugger(mforms.Form):
             tbi_stepOut = mforms.newToolBarItem(mforms.ActionItem)
             tbi_stepOut.set_icon(icon_path + "icons\\debug_step_out.png")
             tbi_stepOut.set_tooltip('Step out directly to next breakpoint')
-            tbi_stepOut.add_activated_callback(self.toDoActionButton)
+            tbi_stepOut.add_activated_callback(self.rdebugStepOut)
             tb_mainToolBar.add_item(tbi_stepOut)
 
             tbi_stepOver = mforms.newToolBarItem(mforms.ActionItem)
             tbi_stepOver.set_icon(icon_path + "icons\\debug_step.png")
             tbi_stepOver.set_tooltip('Step over to next statement/breakpoint')
-            tbi_stepOver.add_activated_callback(self.toDoActionButton)
+            tbi_stepOver.add_activated_callback(self.rdebugStepOver)
             tb_mainToolBar.add_item(tbi_stepOver)
 
             tb_mainToolBar.add_item(
@@ -453,72 +452,85 @@ class UI_Debugger(mforms.Form):
             result_text += column_point + row_line + linebreak + linebreak
             self.printToOutput(result_text)
 
-    def _printFormattedText_resultSteps(self, resultsets, resultCaller=''):
+    def _printFormattedText_resultSteps(self, resultsets, resultCaller='', debugger = False):
         identation = " " * 5
         result_text = "Executing '"+resultCaller+"':\n"
         output = []
+
         try:
-            for result in resultsets:
-                output = []
-                line = []
-                column_lengths = []
-                ncolumns = result.numFields()
+            if debugger and len(resultsets) > 1:
+                resultsets = [resultsets[1]]
 
-                #setting ncolumns + 1 because of range() behaviour
-                for column_index in range(1, ncolumns+1):
-                    column_name = result.fieldName(column_index)
-                    line.append(column_name + identation)
-                    column_lengths.append(len(column_name) + len(identation))
-
-                separator = []
-                for c in column_lengths:
-                    separator.append("-"*c)
-                separator = " + ".join(separator)
-                output.append("+ "+separator+" +")
-
-                line = " | ".join(line)
-                output.append("| "+line+" |")
-
-                output.append("+ "+separator+" +\n")
-
-                ok = result.firstRow()
-                if ok:
-                    result_text += '\n'.join(output)
-
-                last_flush = 0
-                rows = []
-                while ok:
+                for result in resultsets:
+                    output = []
                     line = []
-                    for i in range(1, ncolumns+1):
-                        value = result.stringByIndex(i)
-                        if value is None:
-                            value = "NULL"
-                        line.append(value.ljust(column_lengths[i-1]))
-                    line = " | ".join(line)
-                    rows.append("| "+line+" |")
+                    column_lengths = []
+                    if result.numFields() >= 1:
+                        ncolumns = result.numFields()
 
-                    # flush text every 1/2s
-                    if time.time() - last_flush >= 0.5:
-                        last_flush = time.time()
-                        result_text += "\n".join(rows)+"\n"
+                        #setting ncolumns + 1 because of range() behaviour
+                        #fieldName() index start at 1 ...
+                        for column_index in range(1, ncolumns+1):
+                            column_name = result.fieldName(column_index)
+                            line.append(column_name + identation)
+                            column_lengths.append(len(column_name) + len(identation))
+
+                        separator = []
+                        for c in column_lengths:
+                            separator.append("-"*(c+1))
+                        separator = " + ".join(separator)
+                        output.append("+ "+separator+" +")
+
+                        line = " | ".join(line)
+                        output.append("| "+line+" |")
+
+                        output.append("+ "+separator+" +\n")
+
+
+                        ok = result.firstRow()
+                        # if ok:
+                        result_text += '\n'.join(output)
+
+                        last_flush = 0
                         rows = []
-                    ok = result.nextRow()
+                        while ok:
+                            line = []
+                            for i in range(1, ncolumns+1):
+                                value = result.stringByIndex(i)
+                                if value is None:
+                                    value = "NULL"
+                                #column_lenghts to i-1: python lists index start with 0
+                                line.append(value.ljust(column_lengths[i-1]))
+                            line = " | ".join(line)
+                            rows.append("| "+line+" |")
 
-                if rows:
-                    result_text += "\n".join(rows)+"\n"
+                            # flush text every 1/2s
+                            if time.time() - last_flush >= 0.5:
+                                last_flush = time.time()
+                                result_text += "\n".join(rows)+"\n"
+                                rows = []
+                            ok = result.nextRow()
 
-                result_text += "+ "+separator+" +\n"
-                result_text += "%i rows\n\n" % (result.numRows() + 1)
+                        if rows:
+                            result_text += "\n".join(rows)+"\n"
+                            result_text += "+ "+separator+" +\n"
+
+                        result_text += "%i rows\n\n" % (result.numRows())
 
             if len(output) > 0:
                 self.printToOutput(result_text)
             else:    
-                self.printToOutput("No rows returned")
+                if debugger == True:
+                    self.printToOutput(result_text + "\n" + identation + "No rows returned")
+                
+                result = self.worker_async_result.get(0.2)
+                self._printFormattedText(result, "worker")
             
+                
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
-
+            
     # Called by mForms GUI.
     def _update_ui(self):
         self._watchdogThread = ThreadPool()
@@ -528,15 +540,10 @@ class UI_Debugger(mforms.Form):
 
         if not isWorkerWorking:
             self._progress.set_text('Not running...')
+            self.configs['debug_status'] = 'stop'
         else:
             self._progress.set_text('Running...')
-
-            # if debug stop for some reason, return the sp ResultSet if any
-            if self.configs['debug_status'] == 'stop':
-                result = self.worker_async_result.get(0.2)
-                self._printFormattedText_resultSteps(result)
-                # Reset counter to execute_sp again
-                self.configs['debug_first_run'] = True
+            self.configs['debug_status'] = 'run'
 
         return True
 
@@ -680,6 +687,7 @@ class UI_Debugger(mforms.Form):
                 raise
         else:
             try:
+                self.configs['debug_status'] = 'run'
                 self._execute_sp(False, False, False)
             except:
                 self.configs['debug_status'] = 'stop'
@@ -733,7 +741,7 @@ class UI_Debugger(mforms.Form):
                 script_params_out += t + " = NULL"
                 script_params_out += ';' if i == len(params_out) else ', '
                 i += 1
-            res = self.workerExecuteSingleQuery(script_params_out)
+            res = self.workerExecuteMultiResultQuery(script_params_out)
 
         if params:
             x = 1
@@ -757,12 +765,13 @@ class UI_Debugger(mforms.Form):
             if not params:
                 result_list_debugger = async_result.get()
             else:
-                time.sleep(0.3)
+                time.sleep(0.2)
                 result_list_debugger = async_result.get()
 
             if result_list_debugger:
                 self._printFormattedText_resultSteps(
-                    result_list_debugger, "debugger")
+                    result_list_debugger, "debugger", True)
+
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -1005,10 +1014,11 @@ class UI_Debugger(mforms.Form):
         if self.configs['debug_status'] == 'run':
             async_result = self._rdebugSetStep('into')
             try:
-                result_list_debugger = async_result.get(0.3)
+                time.sleep(0.3)
+                result_list_debugger = async_result.get()
                 if result_list_debugger:
                     self._printFormattedText_resultSteps(
-                        result_list_debugger, "debugger")
+                        result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -1018,9 +1028,11 @@ class UI_Debugger(mforms.Form):
         if self.configs['debug_status'] == 'run':
             async_result = self._rdebugSetStep('out')
             try:
-                result_list_debugger = async_result.get(0.3)
+                time.sleep(0.3)
+                result_list_debugger = async_result.get()
                 if result_list_debugger:
-                    self._printFormattedText(result_list_debugger)
+                    self._printFormattedText_resultSteps(
+                        result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -1030,9 +1042,11 @@ class UI_Debugger(mforms.Form):
         if self.configs['debug_status'] == 'run':
             async_result = self._rdebugSetStep('over')
             try:
-                result_list_debugger = async_result.get(0.3)
+                time.sleep(0.3)
+                result_list_debugger = async_result.get()
                 if result_list_debugger:
-                    self._printFormattedText(result_list_debugger)
+                    self._printFormattedText_resultSteps(
+                        result_list_debugger, "debugger", True)
             except:
                 mforms.Utilities.show_warning(
                     "Error!", str(traceback.format_exc()), "OK", "", "")
@@ -1095,7 +1109,6 @@ class UI_Debugger(mforms.Form):
         # Remove all breakpoints before add then
         if self._rdebugCheckBreakpoints():
             self._rdebugRemoveAllBreakpoints()
-            self._debug_printToOutput('first')
 
         # Add breakpoints setted on GUI
         for k, v in self._listPosBreakpoints.items():
@@ -1110,7 +1123,6 @@ class UI_Debugger(mforms.Form):
         time.sleep(0.3)
         if not self._rdebugCheckBreakpoints():
             self._rdebugSetLastBreakpoint()
-            self._debug_printToOutput('second')
 
         self._inputParametersForm()
 
