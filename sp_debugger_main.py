@@ -849,7 +849,7 @@ class UI_Debugger(mforms.Form):
     # Creates a new connection to worker and debugger session starts
     def runWorkerConnector(self):
         try:
-            info = grt.root.wb.rdbmsMgmt.storedConns[0]
+            info = grt.root.wb.sqlEditors[0].connection
             self.worker_connection = MySQLConnection(info)
             self.worker_connection.connect()
             if self.worker_connection.is_connected:
@@ -862,7 +862,7 @@ class UI_Debugger(mforms.Form):
 
     def runDebuggerConnector(self):
         try:
-            info = grt.root.wb.rdbmsMgmt.storedConns[0]
+            info = grt.root.wb.sqlEditors[0].connection
             self.debugger_connection = MySQLConnection(info)
             self.debugger_connection.connect()
             if self.debugger_connection.is_connected:
@@ -930,7 +930,7 @@ class UI_Debugger(mforms.Form):
     # Used only for intern queries, preventing 'Commands Out Of Sync'
     def _watchdogConnection(self):
         try:
-            info = grt.root.wb.rdbmsMgmt.storedConns[0]
+            info = grt.root.wb.sqlEditors[0].connection
             self._watchdog_connection = MySQLConnection(info)
             self._watchdog_connection.connect()
             if self._watchdog_connection.is_connected:
