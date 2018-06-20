@@ -660,23 +660,53 @@ class UI_Debugger(mforms.Form):
     def _appendParametersToList(self, _list_parameters):
         params = ''
         routine_type = 'PROCEDURE'
-        script_parameters = """SELECT parameter_mode, parameter_name, data_type FROM information_schema.parameters
-        WHERE routine_type = '{0}'
-        AND specific_schema = '{1}'
-        AND specific_name = '{2}'; """.format(
-            routine_type.upper(),
-            self.current_sqlEditor.defaultSchema,
-            self.strp_name)
+        majorNumberVersion = self.current_sqlEditor.serverVersion.majorNumber
+        minorNumberVersion = self.current_sqlEditor.serverVersion.minorNumber
+
+        # Information_schema.parameters was introduced in MySQL 5.5
+        # If MySQL < 5.5 we need to parse mysql.proc param_list instead
+        if majorNumberVersion == 5 and  minorNumberVersion < 5:
+            script_parameters = """SELECT REPLACE(param_list, ' ', ';;') AS params
+                                    FROM mysql.proc p
+                                    WHERE 1=1
+                                    AND TYPE = '{0}'
+                                    AND db = '{1}'
+                                    AND specific_name = '{2}';""".format(
+                routine_type.upper(),
+                self.current_sqlEditor.defaultSchema,
+                self.strp_name)
+
+        else:
+            script_parameters = """SELECT parameter_mode, parameter_name, data_type FROM information_schema.parameters
+            WHERE routine_type = '{0}'
+            AND specific_schema = '{1}'
+            AND specific_name = '{2}'; """.format(
+                routine_type.upper(),
+                self.current_sqlEditor.defaultSchema,
+                self.strp_name)
+
         try:
             result_parameters = self.debuggerExecuteSingleQuery(
                 script_parameters, False)
             if result_parameters:
-                while result_parameters.nextRow():
-                    params = ''.join([result_parameters.stringByName('parameter_mode'),
-                                      ";;", result_parameters.stringByName(
-                        'parameter_name'),
-                        ";;", result_parameters.stringByName('data_type')])
-                    _list_parameters.append(params)
+                if majorNumberVersion == 5 and minorNumberVersion < 5:
+                    while result_parameters.nextRow():
+                        tmp_params = result_parameters.stringByName('params')
+                        tmp_params = tmp_params.split(',')
+                        for p in tmp_params:
+                            if p[:2] == ";;":
+                                _list_parameters.append(p[2:])
+                            else:
+                                _list_parameters.append(p)
+                else:
+                    while result_parameters.nextRow():
+                        params = ''.join([result_parameters.stringByName('parameter_mode'),
+                                        ";;", result_parameters.stringByName(
+                            'parameter_name'),
+                            ";;", result_parameters.stringByName('data_type')])
+                        _list_parameters.append(params)
+
+                log_info("|| MajorNumber -> {0} - MinorNumber -> {1} || _list_params: ".format(majorNumberVersion, minorNumberVersion) + str(_list_parameters))
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
