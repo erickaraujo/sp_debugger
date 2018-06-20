@@ -273,7 +273,7 @@ class UI_Debugger(mforms.Form):
             tbi_watchVariable.set_icon(icon_path + "ui\\edit.png")
             tbi_watchVariable.set_tooltip(
                 'Set a variable to watch/change value')
-            tbi_watchVariable.add_activated_callback(self.toDoActionButton)
+            tbi_watchVariable.add_activated_callback(self.inputVariablesForm)
             tb_mainToolBar.add_item(tbi_watchVariable)
 
             tbi_clearOutput = mforms.newToolBarItem(mforms.ActionItem)
@@ -720,11 +720,11 @@ class UI_Debugger(mforms.Form):
 
         script += ')'
 
-        log_info(' || calling rdebug_real_run ')
         async_result = self.rdebug_real_run()
-        log_info(' || called! ')
         self.worker_async_result = self._workerThread.apply_async(
             self.workerExecuteMultiResultQuery, args=(script, False))
+
+        self.printToOutput('Debug started! Status Changed.')
         try:
             if not params:
                 result_list_debugger = async_result.get()
@@ -741,6 +741,73 @@ class UI_Debugger(mforms.Form):
                 "Error!", str(traceback.format_exc()), "OK", "", "")
             raise
 
+    def inputVariablesForm(self, ivf):
+        if self.configs['debug_status'] == 'run':
+            mainForm_wvariables = mforms.Form(None, mforms.FormToolWindow)
+            mainForm_wvariables.set_title(
+                'Set a value to a variable in ({0})'.format(self.strp_name))
+            box_wvariables = mforms.newBox(False)
+            box_wvariables.set_spacing(8)
+            box_wvariables.set_padding(8)
+
+            table_wvariable = mforms.newTable()
+            table_wvariable.set_padding(10)
+            table_wvariable.set_row_spacing(8)
+            table_wvariable.set_column_spacing(2)
+            table_wvariable.set_column_count(3)
+            table_wvariable.set_row_count(3)
+
+            top = 0
+            bottom = 1
+
+            label_variable_desc = mforms.newLabel(
+                "Input a parameter or user-defined variable")
+            label_variable_desc.set_style(mforms.InfoCaptionStyle)
+            table_wvariable.add(label_variable_desc, 0, 2, top, bottom, 0)
+
+            label_variable_name = mforms.newLabel("Variable:")
+            table_wvariable.add(
+                label_variable_name, 0, 1, top+1, bottom+1, 0)
+
+            textbox_variable_name = mforms.newTextEntry(mforms.NormalEntry)
+            textbox_variable_name.set_size(125, 20)
+            table_wvariable.add(
+                textbox_variable_name, 1, 2, top+1, bottom+1, 0)
+
+            label_value_name = mforms.newLabel("Value:")
+            table_wvariable.add(
+                label_value_name, 0, 1, top+2, bottom+2, 0)
+
+            textbox_value_name = mforms.newTextEntry(mforms.NormalEntry)
+            textbox_value_name.set_size(125, 20)
+            table_wvariable.add(
+                textbox_value_name, 1, 2, top+2, bottom+2, 0)
+
+            box_wvariables.add(table_wvariable, False, False)
+            btn_variable_ok = mforms.newButton()
+            btn_variable_ok.set_text("OK")
+            btn_variable_cancel = mforms.newButton()
+            btn_variable_cancel.set_text("Cancel")
+
+            mforms.Utilities.add_end_ok_cancel_buttons(
+                box_wvariables, btn_variable_ok, btn_variable_cancel)
+            mainForm_wvariables.set_content(box_wvariables)
+            mainForm_wvariables.center()
+
+            try:
+                if mainForm_wvariables.run_modal(btn_variable_ok, btn_variable_cancel):
+                    self.rdebug_set_variables(
+                        textbox_variable_name.get_string_value(), textbox_value_name.get_string_value())
+            except:
+                mforms.Utilities.show_warning(
+                    "Error!", str(traceback.format_exc()), "OK", "", "")
+                raise
+        else:
+            mforms.Utilities.show_message(
+                "Debug not running!", "You need to start debugging session before change value of a variable!", "OK", "", "")
+            log_info("... Debug not running yet, clicked in step into")
+
+        # rdebug_set_variables
     """
         Connections with MySQL Workbench API.
     """
@@ -1048,6 +1115,19 @@ class UI_Debugger(mforms.Form):
             res = self.debuggerExecuteSingleQuery(script, False)
             if res:
                 return res
+        except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
+            raise
+
+    def rdebug_set_variables(self, variable, new_value):
+        script = "CALL common_schema.rdebug_set_variable('{0}', '{1}')".format(
+            variable, new_value
+        )
+
+        try:
+            res = self.debuggerExecuteSingleQuery(script, False)
+            res = None
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
