@@ -475,7 +475,7 @@ class UI_Debugger(mforms.Form):
 
                         if rows:
                             result_text += "\n".join(rows)+"\n"
-                            result_text += "+ "+separator+" +\n"
+                        result_text += "+ "+separator+" +\n"
 
                         result_text += "%i rows\n\n" % (result.numRows())
 
@@ -720,7 +720,9 @@ class UI_Debugger(mforms.Form):
 
         script += ')'
 
-        async_result = self._rdebugSetStep('into')
+        log_info(' || calling rdebug_real_run ')
+        async_result = self.rdebug_real_run()
+        log_info(' || called! ')
         self.worker_async_result = self._workerThread.apply_async(
             self.workerExecuteMultiResultQuery, args=(script, False))
         try:
@@ -1080,12 +1082,14 @@ class UI_Debugger(mforms.Form):
                 "Error", "Error when trying to add breakpoint!", "OK", "", "")
             raise
 
+    # Start debugging processes
     def rdebug_run(self, rn):
         # 'Start' rdebug again if 'Stop' button has clicked
         # No implications if 'rdebug_start' is called twice
         self.rdebug_start(self.getWorkerConnectionID())
 
         # Remove all breakpoints before add then
+        # If dessync between backend and gui occur
         if self._rdebugCheckBreakpoints():
             self._rdebugRemoveAllBreakpoints()
 
@@ -1098,12 +1102,26 @@ class UI_Debugger(mforms.Form):
                     self._rdebug_set_breakpoint, args=(v, True))
 
         # If breakpoints were not marked and setted,
-        # Call last breakpoint anyway
+        # Call last breakpoint to prevent freeze
         time.sleep(0.3)
         if not self._rdebugCheckBreakpoints():
             self._rdebugSetLastBreakpoint()
 
         self._inputParametersForm()
+
+    def rdebug_real_run(self):
+        script = "CALL common_schema.rdebug_run()"
+        try:
+            res = self._debuggerThread.apply_async(
+                self.debuggerExecuteMultiResultQuery, args=(script, False))
+            if res:
+                log_info("rdebug_run called in {0}"
+                         .format(self.getWorkerConnectionID))
+                return res
+        except:
+            mforms.Utilities.show_warning(
+                "Error!", str(traceback.format_exc()), "OK", "", "")
+            raise
 
     # Set last breakpoint automatically
     # Only when no breakpoint was found on GUI
