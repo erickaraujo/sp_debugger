@@ -221,7 +221,9 @@ class UI_Debugger(mforms.Form):
             box_output.set_padding(1)
             self.textbox_output = mforms.newTextBox(mforms.BothScrollBars)
             self.textbox_output.set_read_only(True)
-            self.textbox_output.set_monospaced(False)
+
+            # e.g. Trebuchet MS bold 9
+            self.textbox_output.set_font('Consolas 8')
             box_output.add(self.textbox_output, True, True)
             panel_output.add(box_output)
 
@@ -267,14 +269,20 @@ class UI_Debugger(mforms.Form):
             tbi_stepOver.add_activated_callback(self.rdebugStepOver)
             tb_mainToolBar.add_item(tbi_stepOver)
 
-            tb_mainToolBar.add_separator_item('Separator')
-
             tbi_watchVariable = mforms.newToolBarItem(mforms.ActionItem)
             tbi_watchVariable.set_icon(icon_path + "ui\\edit.png")
             tbi_watchVariable.set_tooltip(
                 'Set a variable to watch/change value')
             tbi_watchVariable.add_activated_callback(self.inputVariablesForm)
             tb_mainToolBar.add_item(tbi_watchVariable)
+
+            tb_mainToolBar.add_separator_item('Separator')
+
+            tbi_saveOutput = mforms.newToolBarItem(mforms.ActionItem)
+            tbi_saveOutput.set_icon(icon_path + "icons\\tiny_save.png")
+            tbi_saveOutput.set_tooltip('Save output log')
+            tbi_saveOutput.add_activated_callback(self.saveOutputFile)
+            tb_mainToolBar.add_item(tbi_saveOutput)
 
             tbi_clearOutput = mforms.newToolBarItem(mforms.ActionItem)
             tbi_clearOutput.set_icon(icon_path + "icons\\wb_rubber.png")
@@ -398,6 +406,17 @@ class UI_Debugger(mforms.Form):
     def clearOutput(self, a):
         self.textbox_output.clear()
         self.printToOutput("Welcome to SPDebugger")
+
+    def saveOutputFile(self, a):
+        file_chooser = mforms.newFileChooser(mforms.Form.main_form(), mforms.SaveFile)
+        file_chooser.set_title("Save Output text As")
+        file_chooser.set_path(os.getcwd() + '\\outputFile')
+        file_chooser.set_extensions("Text Files (*.txt)|*.txt","txt");
+        if file_chooser.run_modal() == mforms.ResultOk:
+            f = open(file_chooser.get_path(), "w")
+            f.write(self.textbox_output.get_string_value())
+            f.close()
+            self.printToOutput("Output File saved successfully at '{0}'".format(file_chooser.get_path()))
 
     # Only used in development mode
     def _debug_printToOutput(self, text):
@@ -665,7 +684,7 @@ class UI_Debugger(mforms.Form):
 
         # Information_schema.parameters was introduced in MySQL 5.5
         # If MySQL < 5.5 we need to parse mysql.proc param_list instead
-        if majorNumberVersion == 5 and  minorNumberVersion < 5:
+        if majorNumberVersion == 5 and minorNumberVersion < 5:
             script_parameters = """SELECT REPLACE(param_list, ' ', ';;') AS params
                                     FROM mysql.proc p
                                     WHERE 1=1
@@ -701,12 +720,13 @@ class UI_Debugger(mforms.Form):
                 else:
                     while result_parameters.nextRow():
                         params = ''.join([result_parameters.stringByName('parameter_mode'),
-                                        ";;", result_parameters.stringByName(
+                                          ";;", result_parameters.stringByName(
                             'parameter_name'),
                             ";;", result_parameters.stringByName('data_type')])
                         _list_parameters.append(params)
 
-                log_info("|| MajorNumber -> {0} - MinorNumber -> {1} || _list_params: ".format(majorNumberVersion, minorNumberVersion) + str(_list_parameters))
+                log_info("|| MajorNumber -> {0} - MinorNumber -> {1} || _list_params: ".format(
+                    majorNumberVersion, minorNumberVersion) + str(_list_parameters))
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
