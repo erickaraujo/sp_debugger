@@ -210,16 +210,13 @@ class UI_Debugger(mforms.Form):
             self.code_editor.set_read_only(True)
             box_codeEditor.add(self.code_editor, True, True)
 
-            # Used only to refresh GUI, invisible
-            self.tmp_refresh_txtbox = mforms.newTextBox(mforms.BothScrollBars)
-            self.tmp_refresh_txtbox.set_read_only(True)
-
             panel_output = mforms.newPanel(mforms.TitledBoxPanel)
             panel_output.set_title('Output')
             box_output = mforms.newBox(True)
             box_output.set_size(515, 550)
             box_output.set_padding(1)
             self.textbox_output = mforms.newTextBox(mforms.BothScrollBars)
+            self.textbox_output.set_size(700, 550)
             self.textbox_output.set_read_only(True)
 
             # e.g. Trebuchet MS bold 9
@@ -413,10 +410,13 @@ class UI_Debugger(mforms.Form):
         file_chooser.set_path(os.getcwd() + '\\outputFile')
         file_chooser.set_extensions("Text Files (*.txt)|*.txt","txt");
         if file_chooser.run_modal() == mforms.ResultOk:
-            f = open(file_chooser.get_path(), "w")
-            f.write(self.textbox_output.get_string_value())
-            f.close()
-            self.printToOutput("Output File saved successfully at '{0}'".format(file_chooser.get_path()))
+            try:
+                with open(file_chooser.get_path(), "w") as f:
+                    f.write(self.textbox_output.get_string_value())
+                self.printToOutput("Output File saved successfully at '{0}'".format(file_chooser.get_path()))
+            except:
+                self.printToOutput("Error on save output file!")
+                raise
 
     # Only used in development mode
     def _debug_printToOutput(self, text):
@@ -858,6 +858,7 @@ class UI_Debugger(mforms.Form):
             log_info("... Debug not running yet, clicked in step into")
 
         # rdebug_set_variables
+    
     """
         Connections with MySQL Workbench API.
     """
