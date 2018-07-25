@@ -385,6 +385,7 @@ class UI_Debugger(mforms.Form):
         if self._update_timer:
             mforms.Utilities.cancel_timeout(self._update_timer)
             log_info("... update_timer canceled successfully.")
+            time.sleep(0.5)
         self.removeCompiledDebug()
 
     def toDoActionButton(self, s):
@@ -405,15 +406,17 @@ class UI_Debugger(mforms.Form):
         self.printToOutput("Welcome to SPDebugger")
 
     def saveOutputFile(self, a):
-        file_chooser = mforms.newFileChooser(mforms.Form.main_form(), mforms.SaveFile)
+        file_chooser = mforms.newFileChooser(
+            mforms.Form.main_form(), mforms.SaveFile)
         file_chooser.set_title("Save Output text As")
         file_chooser.set_path(os.getcwd() + '\\outputFile')
-        file_chooser.set_extensions("Text Files (*.txt)|*.txt","txt");
+        file_chooser.set_extensions("Text Files (*.txt)|*.txt", "txt")
         if file_chooser.run_modal() == mforms.ResultOk:
             try:
                 with open(file_chooser.get_path(), "w") as f:
                     f.write(self.textbox_output.get_string_value())
-                self.printToOutput("Output File saved successfully at '{0}'".format(file_chooser.get_path()))
+                self.printToOutput(
+                    "Output File saved successfully at '{0}'".format(file_chooser.get_path()))
             except:
                 self.printToOutput("Error on save output file!")
                 raise
@@ -463,7 +466,7 @@ class UI_Debugger(mforms.Form):
                         separator = " + ".join(separator)
                         output.append("+ "+separator+" +")
 
-                        line = " | ".join(line)
+                        line = "  | ".join(line)
                         output.append("| "+line+" |")
 
                         output.append("+ "+separator+" +\n")
@@ -482,7 +485,7 @@ class UI_Debugger(mforms.Form):
                                     value = "NULL"
                                 # column_lenghts to i-1: python lists index start with 0
                                 line.append(value.ljust(column_lengths[i-1]))
-                            line = " | ".join(line)
+                            line = "  | ".join(line)
                             rows.append("| "+line+" |")
 
                             # flush text every 1/2s
@@ -858,7 +861,7 @@ class UI_Debugger(mforms.Form):
             log_info("... Debug not running yet, clicked in step into")
 
         # rdebug_set_variables
-    
+
     """
         Connections with MySQL Workbench API.
     """
