@@ -335,7 +335,7 @@ class UI_Debugger(mforms.Form):
         if result_set:
             while result_set.nextRow():
                 framework_installed = int(result_set.stringFieldValue(0))
-            log_info("... var framework_installed = " +
+            log_info("... framework_installed = " +
                      str(framework_installed))
         if framework_installed:
             log_info("... framework found!")
@@ -385,7 +385,8 @@ class UI_Debugger(mforms.Form):
         if self._update_timer:
             mforms.Utilities.cancel_timeout(self._update_timer)
             log_info("... update_timer canceled successfully.")
-            time.sleep(0.5)
+            self._update_timer = None
+            time.sleep(1)
         self.removeCompiledDebug()
 
     def toDoActionButton(self, s):
@@ -728,8 +729,8 @@ class UI_Debugger(mforms.Form):
                             ";;", result_parameters.stringByName('data_type')])
                         _list_parameters.append(params)
 
-                log_info("|| MajorNumber -> {0} - MinorNumber -> {1} || _list_params: ".format(
-                    majorNumberVersion, minorNumberVersion) + str(_list_parameters))
+                log_info("... DB VersionNumber -> {0}.{1}".format(
+                    majorNumberVersion, minorNumberVersion))
         except:
             mforms.Utilities.show_warning(
                 "Error!", str(traceback.format_exc()), "OK", "", "")
